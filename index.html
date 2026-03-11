@@ -1,486 +1,1102 @@
 <!DOCTYPE html>
+
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=450, initial-scale=1.0">
-<title>Claude Watch</title>
-<link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@300;400;500&family=Syne:wght@400;700;800&display=swap" rel="stylesheet">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>OCRift — AI Document Processing</title>
+<link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=DM+Sans:opsz,wght@9..40,300;9..40,400;9..40,500;9..40,600&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/pdf-lib@1.17.1/dist/pdf-lib.min.js"></script>
 <style>
-  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+:root {
+  --bg:       #07070f;
+  --bg2:      #0e0e1a;
+  --bg3:      #15152a;
+  --border:   #252540;
+  --accent:   #f59e0b;
+  --accent2:  #fb923c;
+  --green:    #22c55e;
+  --red:      #ef4444;
+  --text:     #e8e8f4;
+  --muted:    #8888aa;
+  --r:        8px;
+}
 
-  :root {
-    --bg: #070a0f;
-    --surface: #0d1117;
-    --ring: #1a2332;
-    --accent: #4fc3f7;
-    --accent2: #81d4fa;
-    --text: #e8f4fd;
-    --muted: #546e7a;
-    --user-bubble: #0a2540;
-    --ai-bubble: #0d1a2e;
-    --glow: rgba(79, 195, 247, 0.15);
-  }
+- { margin:0; padding:0; box-sizing:border-box; }
 
-  html, body {
-    width: 450px;
-    height: 450px;
-    overflow: hidden;
-    background: #000;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-  }
+body {
+background: var(–bg);
+color: var(–text);
+font-family: ‘DM Sans’, sans-serif;
+min-height: 100vh;
+overflow-x: hidden;
+}
 
-  /* WATCH BODY */
-  .watch {
-    width: 450px;
-    height: 450px;
-    border-radius: 50%;
-    background: var(--bg);
-    position: relative;
-    overflow: hidden;
-    border: 2px solid #1a2a3a;
-    box-shadow:
-      0 0 0 4px #0a0f14,
-      0 0 0 6px #1a2a3a,
-      0 0 60px rgba(79,195,247,0.08),
-      inset 0 0 80px rgba(0,0,0,0.6);
-  }
+/* Subtle dot grid */
+body::before {
+content: ‘’;
+position: fixed;
+inset: 0;
+background-image: radial-gradient(circle, #252540 1px, transparent 1px);
+background-size: 40px 40px;
+opacity: 0.4;
+pointer-events: none;
+z-index: 0;
+}
 
-  /* Ambient background effect */
-  .watch::before {
-    content: '';
-    position: absolute;
-    width: 300px; height: 300px;
-    top: -80px; left: 50%;
-    transform: translateX(-50%);
-    background: radial-gradient(ellipse, rgba(79,195,247,0.06) 0%, transparent 70%);
-    border-radius: 50%;
-    pointer-events: none;
-    z-index: 0;
-  }
+.wrap {
+max-width: 940px;
+margin: 0 auto;
+padding: 0 24px;
+position: relative;
+z-index: 1;
+}
 
-  /* Circular clip mask */
-  .watch-inner {
-    width: 100%; height: 100%;
-    border-radius: 50%;
-    overflow: hidden;
-    display: flex;
-    flex-direction: column;
-    position: relative;
-    z-index: 1;
-  }
+/* ── HEADER ── */
+header {
+display: flex;
+align-items: flex-end;
+gap: 20px;
+padding: 52px 0 36px;
+border-bottom: 1px solid var(–border);
+margin-bottom: 52px;
+}
 
-  /* SCREENS */
-  .screen { 
-    position: absolute; 
-    inset: 0; 
-    border-radius: 50%;
-    display: flex; 
-    flex-direction: column; 
-    align-items: center; 
-    justify-content: center;
-    transition: opacity 0.4s ease, transform 0.4s ease;
-  }
-  .screen.hidden { opacity: 0; pointer-events: none; transform: scale(0.95); }
+.logo {
+font-family: ‘Bebas Neue’, sans-serif;
+font-size: 80px;
+line-height: 0.9;
+letter-spacing: 6px;
+background: linear-gradient(130deg, var(–accent) 0%, var(–accent2) 60%, #ff6b35 100%);
+-webkit-background-clip: text;
+-webkit-text-fill-color: transparent;
+background-clip: text;
+}
 
-  /* HOME SCREEN */
-  #home {
-    background: var(--bg);
-    gap: 8px;
-  }
+.logo-sub {
+font-family: ‘IBM Plex Mono’, monospace;
+font-size: 10.5px;
+letter-spacing: 3.5px;
+color: var(–muted);
+text-transform: uppercase;
+margin-top: 6px;
+}
 
-  .logo-ring {
-    width: 90px; height: 90px;
-    border-radius: 50%;
-    border: 1.5px solid var(--accent);
-    display: flex; align-items: center; justify-content: center;
-    position: relative;
-    box-shadow: 0 0 20px rgba(79,195,247,0.2), inset 0 0 20px rgba(79,195,247,0.05);
-    animation: pulse-ring 3s ease-in-out infinite;
-  }
-  @keyframes pulse-ring {
-    0%,100% { box-shadow: 0 0 20px rgba(79,195,247,0.2), inset 0 0 20px rgba(79,195,247,0.05); }
-    50% { box-shadow: 0 0 35px rgba(79,195,247,0.4), inset 0 0 30px rgba(79,195,247,0.1); }
-  }
+.badge {
+margin-left: auto;
+background: var(–bg3);
+border: 1px solid var(–border);
+padding: 6px 14px;
+border-radius: 999px;
+font-family: ‘IBM Plex Mono’, monospace;
+font-size: 11px;
+color: var(–accent);
+letter-spacing: 1px;
+flex-shrink: 0;
+}
 
-  .logo-icon {
-    font-size: 36px;
-    filter: drop-shadow(0 0 8px rgba(79,195,247,0.6));
-  }
+/* ── DROP ZONE ── */
+.drop-zone {
+border: 2px dashed var(–border);
+border-radius: 18px;
+padding: 72px 40px;
+text-align: center;
+cursor: pointer;
+transition: border-color .3s, transform .3s, box-shadow .3s;
+background: var(–bg2);
+position: relative;
+overflow: hidden;
+margin-bottom: 16px;
+}
 
-  .watch-title {
-    font-family: 'Syne', sans-serif;
-    font-weight: 800;
-    font-size: 20px;
-    color: var(--text);
-    letter-spacing: 0.05em;
-    text-shadow: 0 0 20px rgba(79,195,247,0.3);
-  }
+.drop-zone::after {
+content: ‘’;
+position: absolute;
+inset: 0;
+background: radial-gradient(ellipse at 50% 50%, rgba(245,158,11,.06) 0%, transparent 70%);
+opacity: 0;
+transition: opacity .3s;
+}
+.drop-zone:hover::after, .drop-zone.over::after { opacity: 1; }
+.drop-zone:hover, .drop-zone.over {
+border-color: var(–accent);
+transform: translateY(-3px);
+box-shadow: 0 24px 64px rgba(245,158,11,.12);
+}
 
-  .watch-sub {
-    font-family: 'DM Mono', monospace;
-    font-size: 9px;
-    color: var(--muted);
-    letter-spacing: 0.15em;
-    text-transform: uppercase;
-  }
+.drop-icon { font-size: 52px; display: block; margin-bottom: 18px; }
+.drop-title { font-size: 21px; font-weight: 500; margin-bottom: 10px; }
+.drop-sub { font-size: 14px; color: var(–muted); line-height: 1.7; }
+.drop-sub em { font-style: normal; color: var(–accent); font-family: ‘IBM Plex Mono’, monospace; font-size: 12px; }
 
-  .tap-btn {
-    margin-top: 12px;
-    padding: 10px 28px;
-    border-radius: 30px;
-    border: 1px solid var(--accent);
-    background: transparent;
-    color: var(--accent);
-    font-family: 'DM Mono', monospace;
-    font-size: 11px;
-    letter-spacing: 0.1em;
-    cursor: pointer;
-    transition: all 0.2s;
-    text-transform: uppercase;
-  }
-  .tap-btn:active, .tap-btn:hover {
-    background: rgba(79,195,247,0.12);
-    box-shadow: 0 0 15px rgba(79,195,247,0.2);
-  }
+#fileInput { display: none; }
 
-  /* CHAT SCREEN */
-  #chat {
-    background: var(--bg);
-    flex-direction: column;
-    justify-content: flex-start;
-    padding: 0;
-    overflow: hidden;
-  }
+/* ── FILE CARD ── */
+.file-card {
+display: none;
+align-items: center;
+gap: 16px;
+padding: 18px 22px;
+background: var(–bg2);
+border: 1px solid var(–border);
+border-radius: var(–r);
+margin-bottom: 28px;
+}
+.file-card.show { display: flex; }
 
-  .chat-header {
-    width: 100%;
-    padding: 52px 40px 8px;
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    flex-shrink: 0;
-    z-index: 10;
-  }
+.file-thumb {
+width: 48px; height: 48px;
+border-radius: 12px;
+background: linear-gradient(135deg, rgba(245,158,11,.18), rgba(251,146,60,.08));
+display: flex; align-items: center; justify-content: center;
+font-size: 26px; flex-shrink: 0;
+}
 
-  .back-btn {
-    width: 28px; height: 28px;
-    border-radius: 50%;
-    border: 1px solid var(--ring);
-    background: rgba(255,255,255,0.04);
-    color: var(--muted);
-    font-size: 13px;
-    cursor: pointer;
-    display: flex; align-items: center; justify-content: center;
-    transition: all 0.2s;
-  }
-  .back-btn:active { background: rgba(255,255,255,0.1); }
+.file-details { flex: 1; min-width: 0; }
+.file-name { font-weight: 500; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; margin-bottom: 4px; }
+.file-meta { font-size: 12.5px; color: var(–muted); font-family: ‘IBM Plex Mono’, monospace; }
 
-  .chat-title-bar {
-    font-family: 'Syne', sans-serif;
-    font-size: 12px;
-    font-weight: 700;
-    color: var(--accent);
-    letter-spacing: 0.08em;
-  }
+.btn-sm {
+background: none;
+border: 1px solid var(–border);
+color: var(–muted);
+padding: 7px 15px;
+border-radius: var(–r);
+font-size: 13px;
+cursor: pointer;
+transition: border-color .2s, color .2s;
+white-space: nowrap;
+}
+.btn-sm:hover { border-color: var(–red); color: var(–red); }
 
-  .status-dot {
-    width: 6px; height: 6px;
-    border-radius: 50%;
-    background: #4ade80;
-    box-shadow: 0 0 6px rgba(74,222,128,0.6);
-    animation: blink 2s ease-in-out infinite;
-  }
-  @keyframes blink { 0%,100%{opacity:1} 50%{opacity:0.4} }
+/* ── SETTINGS ── */
+.settings {
+display: grid;
+grid-template-columns: 1fr 1fr 1fr;
+gap: 14px;
+margin-bottom: 28px;
+}
 
-  /* Messages area */
-  .messages {
-    flex: 1;
-    overflow-y: auto;
-    padding: 4px 30px 8px;
-    display: flex;
-    flex-direction: column;
-    gap: 6px;
-    scrollbar-width: none;
-    -webkit-overflow-scrolling: touch;
-  }
-  .messages::-webkit-scrollbar { display: none; }
+.setting {
+background: var(–bg2);
+border: 1px solid var(–border);
+border-radius: var(–r);
+padding: 16px;
+}
 
-  .msg {
-    max-width: 85%;
-    padding: 8px 12px;
-    border-radius: 14px;
-    font-family: 'DM Mono', monospace;
-    font-size: 10px;
-    line-height: 1.5;
-    animation: msg-in 0.25s ease;
-  }
-  @keyframes msg-in {
-    from { opacity: 0; transform: translateY(6px); }
-    to { opacity: 1; transform: translateY(0); }
-  }
+.slabel {
+font-family: ‘IBM Plex Mono’, monospace;
+font-size: 10px;
+text-transform: uppercase;
+letter-spacing: 2px;
+color: var(–muted);
+margin-bottom: 10px;
+display: block;
+}
 
-  .msg.user {
-    align-self: flex-end;
-    background: var(--user-bubble);
-    color: var(--accent2);
-    border: 1px solid rgba(79,195,247,0.15);
-    border-bottom-right-radius: 4px;
-  }
+select, input[type=“number”] {
+width: 100%;
+background: var(–bg3);
+border: 1px solid var(–border);
+color: var(–text);
+padding: 9px 11px;
+border-radius: 6px;
+font-size: 13.5px;
+font-family: ‘DM Sans’, sans-serif;
+appearance: none;
+cursor: pointer;
+transition: border-color .2s;
+}
+select:focus, input[type=“number”]:focus { outline: none; border-color: var(–accent); }
 
-  .msg.ai {
-    align-self: flex-start;
-    background: var(--ai-bubble);
-    color: var(--text);
-    border: 1px solid rgba(255,255,255,0.06);
-    border-bottom-left-radius: 4px;
-  }
+.range-row { display: flex; gap: 8px; align-items: center; }
+.range-row input { flex: 1; }
+.sep { color: var(–muted); font-size: 13px; }
 
-  .msg.typing {
-    align-self: flex-start;
-    background: var(--ai-bubble);
-    border: 1px solid rgba(255,255,255,0.06);
-    border-bottom-left-radius: 4px;
-    padding: 10px 14px;
-  }
+/* ── TIPS ── */
+.tips {
+display: grid;
+grid-template-columns: repeat(3, 1fr);
+gap: 12px;
+margin-bottom: 28px;
+}
 
-  .typing-dots {
-    display: flex; gap: 4px; align-items: center;
-  }
-  .typing-dots span {
-    width: 5px; height: 5px;
-    border-radius: 50%;
-    background: var(--accent);
-    animation: bounce 1.2s ease-in-out infinite;
-  }
-  .typing-dots span:nth-child(2) { animation-delay: 0.2s; }
-  .typing-dots span:nth-child(3) { animation-delay: 0.4s; }
-  @keyframes bounce {
-    0%,60%,100%{ transform: translateY(0); opacity:0.4; }
-    30%{ transform: translateY(-5px); opacity:1; }
-  }
+.tip {
+background: var(–bg2);
+border: 1px solid var(–border);
+border-radius: var(–r);
+padding: 14px;
+display: flex;
+gap: 10px;
+font-size: 13px;
+color: var(–muted);
+line-height: 1.55;
+}
+.tip strong { color: var(–text); }
+.tip-i { flex-shrink: 0; font-size: 18px; }
 
-  /* Input row */
-  .input-row {
-    padding: 6px 30px 52px;
-    display: flex;
-    gap: 6px;
-    align-items: center;
-    flex-shrink: 0;
-  }
+/* ── PROCESS BTN ── */
+.btn-process {
+width: 100%;
+padding: 20px;
+background: linear-gradient(130deg, var(–accent), var(–accent2));
+color: #000;
+border: none;
+border-radius: 12px;
+font-size: 15.5px;
+font-weight: 600;
+letter-spacing: 2px;
+text-transform: uppercase;
+font-family: ‘IBM Plex Mono’, monospace;
+cursor: pointer;
+transition: transform .25s, box-shadow .25s;
+margin-bottom: 36px;
+position: relative;
+overflow: hidden;
+}
+.btn-process::before {
+content: ‘’;
+position: absolute;
+top: 0; left: -100%;
+width: 100%; height: 100%;
+background: linear-gradient(90deg, transparent, rgba(255,255,255,.22), transparent);
+transition: left .5s;
+}
+.btn-process:hover::before { left: 100%; }
+.btn-process:hover { transform: translateY(-3px); box-shadow: 0 20px 50px rgba(245,158,11,.38); }
+.btn-process:disabled { opacity: .45; cursor: not-allowed; transform: none; box-shadow: none; }
 
-  .msg-input {
-    flex: 1;
-    background: rgba(255,255,255,0.05);
-    border: 1px solid var(--ring);
-    border-radius: 20px;
-    color: var(--text);
-    font-family: 'DM Mono', monospace;
-    font-size: 10px;
-    padding: 8px 12px;
-    outline: none;
-    transition: border-color 0.2s;
-    min-width: 0;
-  }
-  .msg-input:focus { border-color: var(--accent); }
-  .msg-input::placeholder { color: var(--muted); }
+/* ── PROGRESS ── */
+.progress-panel {
+display: none;
+background: var(–bg2);
+border: 1px solid var(–border);
+border-radius: 16px;
+padding: 30px;
+margin-bottom: 30px;
+}
+.progress-panel.show { display: block; }
 
-  .send-btn {
-    width: 32px; height: 32px;
-    border-radius: 50%;
-    border: none;
-    background: var(--accent);
-    color: #070a0f;
-    font-size: 13px;
-    cursor: pointer;
-    display: flex; align-items: center; justify-content: center;
-    flex-shrink: 0;
-    transition: all 0.2s;
-    box-shadow: 0 0 12px rgba(79,195,247,0.3);
-  }
-  .send-btn:active { transform: scale(0.9); }
-  .send-btn:disabled { opacity: 0.4; cursor: not-allowed; transform: none; }
+.ph {
+display: flex;
+justify-content: space-between;
+align-items: center;
+margin-bottom: 22px;
+}
 
-  /* Circular vignette overlay */
-  .vignette {
-    position: absolute;
-    inset: 0;
-    border-radius: 50%;
-    background: radial-gradient(ellipse at center,
-      transparent 55%,
-      rgba(7,10,15,0.6) 75%,
-      rgba(7,10,15,0.95) 90%
-    );
-    pointer-events: none;
-    z-index: 5;
-  }
+.ptitle {
+font-family: ‘IBM Plex Mono’, monospace;
+font-size: 12px;
+text-transform: uppercase;
+letter-spacing: 2.5px;
+color: var(–accent);
+display: flex;
+align-items: center;
+gap: 8px;
+}
 
-  /* Corner fade for messages near edges */
-  .messages-fade-top {
-    position: absolute;
-    top: 88px;
-    left: 0; right: 0;
-    height: 20px;
-    background: linear-gradient(var(--bg), transparent);
-    z-index: 4;
-    pointer-events: none;
-  }
+.dot {
+width: 8px; height: 8px;
+border-radius: 50%;
+background: var(–accent);
+animation: blink 1.4s ease-in-out infinite;
+}
+@keyframes blink { 0%,100%{opacity:1} 50%{opacity:.25} }
 
-  .messages-fade-bottom {
-    position: absolute;
-    bottom: 72px;
-    left: 0; right: 0;
-    height: 20px;
-    background: linear-gradient(transparent, var(--bg));
-    z-index: 4;
-    pointer-events: none;
-  }
+.btn-cancel {
+background: none;
+border: 1px solid var(–border);
+color: var(–muted);
+padding: 6px 15px;
+border-radius: var(–r);
+font-size: 12.5px;
+cursor: pointer;
+transition: border-color .2s, color .2s;
+}
+.btn-cancel:hover { border-color: var(–red); color: var(–red); }
 
-  /* Error */
-  .msg.error {
-    align-self: center;
-    background: rgba(239,68,68,0.1);
-    color: #f87171;
-    border: 1px solid rgba(239,68,68,0.2);
-    border-radius: 10px;
-    text-align: center;
-    font-size: 9px;
-  }
+.pbar-bg {
+background: var(–bg3);
+border-radius: 999px;
+height: 7px;
+margin-bottom: 14px;
+overflow: hidden;
+}
+
+.pbar {
+height: 100%;
+border-radius: 999px;
+background: linear-gradient(90deg, var(–accent), var(–accent2));
+width: 0%;
+transition: width .4s ease;
+position: relative;
+overflow: hidden;
+}
+.pbar::after {
+content:’’;
+position: absolute;
+inset: 0;
+background: linear-gradient(90deg, transparent 0%, rgba(255,255,255,.35) 50%, transparent 100%);
+animation: sweep 1.6s infinite;
+}
+@keyframes sweep { from{transform:translateX(-100%)} to{transform:translateX(300%)} }
+
+.pstats {
+display: flex;
+justify-content: space-between;
+font-family: ‘IBM Plex Mono’, monospace;
+font-size: 12px;
+color: var(–muted);
+margin-bottom: 18px;
+}
+.pstats .cur { color: var(–text); }
+
+.plog {
+background: var(–bg3);
+border-radius: var(–r);
+padding: 14px 16px;
+height: 130px;
+overflow-y: auto;
+font-family: ‘IBM Plex Mono’, monospace;
+font-size: 11.5px;
+color: var(–muted);
+line-height: 1.9;
+border: 1px solid var(–border);
+}
+
+.log-e { display: flex; gap: 12px; }
+.lt { color: var(–accent); flex-shrink: 0; }
+.lm.ok { color: var(–green); }
+.lm.warn { color: var(–accent); }
+.lm.err { color: var(–red); }
+
+/* ── RESULTS ── */
+.results-panel {
+display: none;
+background: var(–bg2);
+border: 1px solid rgba(34,197,94,.35);
+border-radius: 16px;
+padding: 30px;
+margin-bottom: 36px;
+}
+.results-panel.show { display: block; }
+
+.rh {
+display: flex;
+justify-content: space-between;
+align-items: flex-start;
+margin-bottom: 26px;
+gap: 20px;
+flex-wrap: wrap;
+}
+
+.rtitle { display: flex; align-items: center; gap: 14px; }
+
+.check {
+width: 36px; height: 36px;
+background: var(–green);
+border-radius: 50%;
+display: flex; align-items: center; justify-content: center;
+font-size: 18px; flex-shrink: 0;
+}
+
+.rtitle h2 { font-size: 20px; font-weight: 500; margin-bottom: 3px; }
+.rtitle p { font-size: 12px; color: var(–muted); font-family: ‘IBM Plex Mono’, monospace; }
+
+.btn-dl {
+display: flex;
+align-items: center;
+gap: 10px;
+background: var(–green);
+color: #000;
+border: none;
+padding: 13px 26px;
+border-radius: 10px;
+font-size: 14px;
+font-weight: 600;
+cursor: pointer;
+transition: transform .2s, box-shadow .2s;
+text-decoration: none;
+font-family: ‘IBM Plex Mono’, monospace;
+letter-spacing: .5px;
+white-space: nowrap;
+}
+.btn-dl:hover { transform: translateY(-2px); box-shadow: 0 10px 28px rgba(34,197,94,.38); }
+
+/* Stats */
+.stats {
+display: grid;
+grid-template-columns: repeat(4, 1fr);
+gap: 12px;
+margin-bottom: 26px;
+}
+
+.stat {
+background: var(–bg3);
+border-radius: var(–r);
+padding: 18px;
+text-align: center;
+border: 1px solid var(–border);
+}
+.sv {
+font-family: ‘Bebas Neue’, sans-serif;
+font-size: 36px;
+color: var(–accent);
+line-height: 1;
+margin-bottom: 5px;
+}
+.sk {
+font-family: ‘IBM Plex Mono’, monospace;
+font-size: 10px;
+text-transform: uppercase;
+letter-spacing: 1.5px;
+color: var(–muted);
+}
+
+/* Preview */
+.preview-label {
+font-family: ‘IBM Plex Mono’, monospace;
+font-size: 10px;
+text-transform: uppercase;
+letter-spacing: 2px;
+color: var(–muted);
+margin-bottom: 10px;
+}
+
+.preview {
+background: var(–bg3);
+border: 1px solid var(–border);
+border-radius: var(–r);
+padding: 18px;
+max-height: 280px;
+overflow-y: auto;
+font-family: ‘IBM Plex Mono’, monospace;
+font-size: 12.5px;
+line-height: 1.8;
+color: var(–muted);
+white-space: pre-wrap;
+}
+
+.txt-btns {
+display: flex;
+gap: 10px;
+margin-top: 14px;
+flex-wrap: wrap;
+}
+
+.btn-txt {
+background: var(–bg3);
+border: 1px solid var(–border);
+color: var(–muted);
+padding: 9px 18px;
+border-radius: var(–r);
+font-size: 13px;
+cursor: pointer;
+transition: border-color .2s, color .2s;
+font-family: ‘IBM Plex Mono’, monospace;
+}
+.btn-txt:hover { border-color: var(–accent); color: var(–accent); }
+
+/* ── FOOTER ── */
+footer {
+border-top: 1px solid var(–border);
+padding: 30px 0;
+text-align: center;
+font-family: ‘IBM Plex Mono’, monospace;
+font-size: 12px;
+color: var(–muted);
+margin-top: 40px;
+}
+footer b { color: var(–accent); }
+
+/* Scrollbar */
+::-webkit-scrollbar { width: 5px; height: 5px; }
+::-webkit-scrollbar-track { background: var(–bg3); }
+::-webkit-scrollbar-thumb { background: var(–border); border-radius: 3px; }
+::-webkit-scrollbar-thumb:hover { background: var(–accent); }
+
+/* Responsive */
+@media (max-width: 680px) {
+.settings { grid-template-columns: 1fr 1fr; }
+.tips { grid-template-columns: 1fr; }
+.stats { grid-template-columns: 1fr 1fr; }
+.logo { font-size: 58px; }
+}
+@media (max-width: 420px) {
+.settings { grid-template-columns: 1fr; }
+}
 </style>
+
 </head>
 <body>
+<div class="wrap">
 
-<div class="watch">
-  <div class="watch-inner">
+  <!-- HEADER -->
 
-    <!-- HOME SCREEN -->
-    <div class="screen" id="home">
-      <div class="logo-ring">
-        <span class="logo-icon">✦</span>
-      </div>
-      <div class="watch-title">CLAUDE</div>
-      <div class="watch-sub">AI Assistant</div>
-      <button class="tap-btn" onclick="goToChat()">Ask Claude</button>
+  <header>
+    <div>
+      <div class="logo">OCRift</div>
+      <div class="logo-sub">AI-Powered OCR · 100% In-Browser · No Upload</div>
     </div>
+    <div class="badge">v2.0 · Tesseract 5</div>
+  </header>
 
-    <!-- CHAT SCREEN -->
-    <div class="screen hidden" id="chat">
-      <div class="chat-header">
-        <button class="back-btn" onclick="goHome()">‹</button>
-        <div class="chat-title-bar">CLAUDE</div>
-        <div class="status-dot"></div>
-      </div>
+  <!-- DROP ZONE -->
 
-      <div class="messages-fade-top"></div>
-      <div class="messages" id="messages"></div>
-      <div class="messages-fade-bottom"></div>
-
-      <div class="input-row">
-        <input class="msg-input" id="msgInput" placeholder="Ask anything…" type="text"
-          onkeydown="if(event.key==='Enter') sendMessage()">
-        <button class="send-btn" id="sendBtn" onclick="sendMessage()">↑</button>
-      </div>
+  <div class="drop-zone" id="dropZone">
+    <span class="drop-icon">📄</span>
+    <div class="drop-title">Drop your document here, or click to browse</div>
+    <div class="drop-sub">
+      Supports PDF, PNG, JPG, JPEG, TIFF, BMP, WebP<br>
+      <em>Up to 1 GB · 2000+ pages · No server · Fully private</em>
     </div>
-
-    <!-- Circular vignette -->
-    <div class="vignette"></div>
+    <input type="file" id="fileInput" accept=".pdf,.png,.jpg,.jpeg,.tiff,.tif,.bmp,.webp">
   </div>
+
+  <div class="file-card" id="fileCard">
+    <div class="file-thumb" id="fileThumb">📄</div>
+    <div class="file-details">
+      <div class="file-name" id="fileName">—</div>
+      <div class="file-meta" id="fileMeta">—</div>
+    </div>
+    <button class="btn-sm" id="btnRemove">✕ Remove</button>
+  </div>
+
+  <!-- SETTINGS -->
+
+  <div class="settings">
+    <div class="setting">
+      <span class="slabel">OCR Language</span>
+      <select id="langSel">
+        <option value="eng">English</option>
+        <option value="rus">Russian</option>
+        <option value="eng+rus">English + Russian</option>
+        <option value="deu">German</option>
+        <option value="fra">French</option>
+        <option value="spa">Spanish</option>
+        <option value="ita">Italian</option>
+        <option value="por">Portuguese</option>
+        <option value="tur">Turkish</option>
+        <option value="ara">Arabic</option>
+        <option value="chi_sim">Chinese (Simplified)</option>
+        <option value="chi_tra">Chinese (Traditional)</option>
+        <option value="jpn">Japanese</option>
+        <option value="kor">Korean</option>
+        <option value="hin">Hindi</option>
+      </select>
+    </div>
+    <div class="setting">
+      <span class="slabel">Quality / Speed</span>
+      <select id="qualSel">
+        <option value="1.0">⚡ Fast (1×)</option>
+        <option value="1.5" selected>⚖ Balanced (1.5×)</option>
+        <option value="2.0">🔍 High Quality (2×)</option>
+        <option value="3.0">💎 Max Quality (3×)</option>
+      </select>
+    </div>
+    <div class="setting">
+      <span class="slabel">Page Range (optional)</span>
+      <div class="range-row">
+        <input type="number" id="pgFrom" placeholder="From" min="1">
+        <span class="sep">–</span>
+        <input type="number" id="pgTo" placeholder="To" min="1">
+      </div>
+    </div>
+  </div>
+
+  <!-- TIPS -->
+
+  <div class="tips">
+    <div class="tip">
+      <span class="tip-i">⚡</span>
+      <span>Large files processed <strong>one page at a time</strong> — memory stays low even for 2000+ page documents.</span>
+    </div>
+    <div class="tip">
+      <span class="tip-i">🔍</span>
+      <span>Output PDF has an <strong>invisible text layer</strong> — visually identical but fully selectable & searchable.</span>
+    </div>
+    <div class="tip">
+      <span class="tip-i">🔒</span>
+      <span><strong>Zero uploads.</strong> All OCR runs inside your browser. Your documents never leave your device.</span>
+    </div>
+  </div>
+
+  <!-- PROCESS BUTTON -->
+
+<button class="btn-process" id="btnProcess" disabled>⚡ Start OCR Processing</button>
+
+  <!-- PROGRESS PANEL -->
+
+  <div class="progress-panel" id="progPanel">
+    <div class="ph">
+      <div class="ptitle"><span class="dot"></span> Processing</div>
+      <button class="btn-cancel" id="btnCancel">✕ Cancel</button>
+    </div>
+    <div class="pbar-bg"><div class="pbar" id="pbar"></div></div>
+    <div class="pstats">
+      <span class="cur" id="ptext">Initializing...</span>
+      <span id="ppct">0%</span>
+    </div>
+    <div class="plog" id="plog"></div>
+  </div>
+
+  <!-- RESULTS PANEL -->
+
+  <div class="results-panel" id="resPanel">
+    <div class="rh">
+      <div class="rtitle">
+        <div class="check">✓</div>
+        <div>
+          <h2>OCR Complete</h2>
+          <p id="resMeta">—</p>
+        </div>
+      </div>
+      <a class="btn-dl" id="btnDl" href="#" download="ocr-output.pdf">⬇ Download PDF</a>
+    </div>
+
+```
+<div class="stats">
+  <div class="stat"><div class="sv" id="sPg">0</div><div class="sk">Pages</div></div>
+  <div class="stat"><div class="sv" id="sWd">0</div><div class="sk">Words</div></div>
+  <div class="stat"><div class="sv" id="sCh">0</div><div class="sk">Characters</div></div>
+  <div class="stat"><div class="sv" id="sTm">0s</div><div class="sk">Time Taken</div></div>
 </div>
 
+<div class="preview-label">Extracted Text Preview</div>
+<div class="preview" id="prevText">—</div>
+<div class="txt-btns">
+  <button class="btn-txt" id="btnCopy">📋 Copy All Text</button>
+  <button class="btn-txt" id="btnTxt">📝 Download .txt</button>
+  <button class="btn-txt" id="btnReset">↺ Process Another</button>
+</div>
+```
+
+  </div>
+
+</div><!-- /wrap -->
+
+<footer>
+  <div class="wrap">
+    <b>OCRift</b> — Browser-native AI OCR engine · Tesseract.js v5 · PDF.js · pdf-lib · 100% Private · No Server
+  </div>
+</footer>
+
 <script>
-const API_URL = "https://api.anthropic.com/v1/messages";
-let conversationHistory = [];
-let isLoading = false;
+// ── Setup PDF.js worker ──
+pdfjsLib.GlobalWorkerOptions.workerSrc =
+  'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
 
-function goToChat() {
-  document.getElementById('home').classList.add('hidden');
-  document.getElementById('chat').classList.remove('hidden');
-  if (conversationHistory.length === 0) {
-    addMessage('ai', 'Hi! I\'m Claude. What\'s on your mind?');
+// ── State ──
+let curFile = null, ocrWorker = null, cancelled = false;
+let fullText = '', dlBlob = null, t0 = 0;
+
+// ── DOM refs ──
+const $  = id => document.getElementById(id);
+const dropZone  = $('dropZone');
+const fileInput = $('fileInput');
+const fileCard  = $('fileCard');
+const fileThumb = $('fileThumb');
+const fileName  = $('fileName');
+const fileMeta  = $('fileMeta');
+const btnRemove = $('btnRemove');
+const btnProcess= $('btnProcess');
+const progPanel = $('progPanel');
+const pbar      = $('pbar');
+const ptext     = $('ptext');
+const ppct      = $('ppct');
+const plog      = $('plog');
+const btnCancel = $('btnCancel');
+const resPanel  = $('resPanel');
+const resMeta   = $('resMeta');
+const btnDl     = $('btnDl');
+const prevText  = $('prevText');
+const langSel   = $('langSel');
+const qualSel   = $('qualSel');
+const pgFrom    = $('pgFrom');
+const pgTo      = $('pgTo');
+
+// ── Helpers ──
+const sleep = ms => new Promise(r => setTimeout(r, ms));
+
+function fmtBytes(b) {
+  if (b < 1e3) return b + ' B';
+  if (b < 1e6) return (b/1e3).toFixed(1) + ' KB';
+  if (b < 1e9) return (b/1e6).toFixed(1) + ' MB';
+  return (b/1e9).toFixed(2) + ' GB';
+}
+
+function fmtTime(ms) {
+  if (ms < 1000) return ms + 'ms';
+  if (ms < 60000) return (ms/1000).toFixed(1) + 's';
+  return `${Math.floor(ms/60000)}m ${Math.floor((ms%60000)/1000)}s`;
+}
+
+function fmtNum(n) {
+  return n >= 1000 ? (n/1000).toFixed(1) + 'K' : String(n);
+}
+
+function log(msg, cls = '') {
+  const t = new Date().toLocaleTimeString('en-US',{hour12:false});
+  const el = document.createElement('div');
+  el.className = 'log-e';
+  el.innerHTML = `<span class="lt">[${t}]</span><span class="lm ${cls}">${msg}</span>`;
+  plog.appendChild(el);
+  plog.scrollTop = plog.scrollHeight;
+}
+
+function setProgress(cur, tot) {
+  const pct = tot > 0 ? Math.round(cur / tot * 100) : 0;
+  pbar.style.width = pct + '%';
+  ppct.textContent = pct + '%';
+}
+
+// ── File handling ──
+function onFile(file) {
+  const isPdf = file.type === 'application/pdf' || /\.pdf$/i.test(file.name);
+  const isImg = /\.(png|jpe?g|tiff?|bmp|webp)$/i.test(file.name) || file.type.startsWith('image/');
+  if (!isPdf && !isImg) {
+    alert('Unsupported file type. Please use PDF, PNG, JPG, TIFF, BMP, or WebP.');
+    return;
   }
-  setTimeout(() => document.getElementById('msgInput').focus(), 300);
+  curFile = file;
+  fileThumb.textContent = isPdf ? '📄' : '🖼️';
+  fileName.textContent = file.name;
+  fileMeta.textContent = `${fmtBytes(file.size)} · ${file.name.split('.').pop().toUpperCase()}`;
+  fileCard.classList.add('show');
+  btnProcess.disabled = false;
+
+  if (isPdf) {
+    // Peek at page count
+    file.arrayBuffer().then(buf => {
+      pdfjsLib.getDocument({ data: buf }).promise.then(pdf => {
+        fileMeta.textContent = `${fmtBytes(file.size)} · PDF · ${pdf.numPages} pages`;
+        pdf.destroy();
+      }).catch(()=>{});
+    }).catch(()=>{});
+  }
 }
 
-function goHome() {
-  document.getElementById('chat').classList.add('hidden');
-  document.getElementById('home').classList.remove('hidden');
+dropZone.addEventListener('click', () => fileInput.click());
+fileInput.addEventListener('change', e => e.target.files[0] && onFile(e.target.files[0]));
+
+['dragover','dragenter'].forEach(ev => dropZone.addEventListener(ev, e => {
+  e.preventDefault(); dropZone.classList.add('over');
+}));
+['dragleave','drop'].forEach(ev => dropZone.addEventListener(ev, () => dropZone.classList.remove('over')));
+dropZone.addEventListener('drop', e => {
+  e.preventDefault();
+  if (e.dataTransfer.files[0]) onFile(e.dataTransfer.files[0]);
+});
+
+btnRemove.addEventListener('click', () => {
+  curFile = null;
+  fileCard.classList.remove('show');
+  btnProcess.disabled = true;
+  fileInput.value = '';
+});
+
+// ── OCR Worker ──
+async function initOCR(lang) {
+  log(`Loading OCR engine: ${lang}...`);
+  if (ocrWorker) { try { await ocrWorker.terminate(); } catch(e){} ocrWorker = null; }
+  ocrWorker = await Tesseract.createWorker(lang, 1, { logger: () => {} });
+  log('OCR engine ready ✓', 'ok');
 }
 
-function addMessage(role, text) {
-  const msgs = document.getElementById('messages');
-  const div = document.createElement('div');
-  div.className = `msg ${role}`;
-  div.textContent = text;
-  msgs.appendChild(div);
-  msgs.scrollTop = msgs.scrollHeight;
-  return div;
+// ── Canvas → JPEG bytes ──
+function canvasToJpeg(canvas, quality = 0.85) {
+  return new Promise(resolve => {
+    canvas.toBlob(blob => {
+      const fr = new FileReader();
+      fr.onload = e => resolve(new Uint8Array(e.target.result));
+      fr.readAsArrayBuffer(blob);
+    }, 'image/jpeg', quality);
+  });
 }
 
-function showTyping() {
-  const msgs = document.getElementById('messages');
-  const div = document.createElement('div');
-  div.className = 'msg typing';
-  div.id = 'typingIndicator';
-  div.innerHTML = '<div class="typing-dots"><span></span><span></span><span></span></div>';
-  msgs.appendChild(div);
-  msgs.scrollTop = msgs.scrollHeight;
+// ── Filter text to Latin-1 (for standard PDF fonts) ──
+function latinSafe(str) {
+  return str.replace(/[^\x00-\xFF]/g, '');
 }
 
-function removeTyping() {
-  const t = document.getElementById('typingIndicator');
-  if (t) t.remove();
+// ── Add page to output PDF ──
+async function addOcrPage(outPdf, canvas, ocrData, pdfW, pdfH) {
+  const page = outPdf.addPage([pdfW, pdfH]);
+  let font;
+  try { font = await outPdf.embedFont(PDFLib.StandardFonts.Helvetica); } catch(e) {}
+
+  // 1. Invisible text layer (white, opacity ~0, drawn first)
+  if (font && ocrData.words) {
+    const scaleX = pdfW / canvas.width;
+    const scaleY = pdfH / canvas.height;
+
+    for (const w of ocrData.words) {
+      if (!w.text || !w.text.trim()) continue;
+      const safe = latinSafe(w.text.trim());
+      if (!safe) continue;
+      try {
+        const x  = w.bbox.x0 * scaleX;
+        const y  = pdfH - (w.bbox.y1 * scaleY);
+        const fs = Math.max((w.bbox.y1 - w.bbox.y0) * scaleY * 0.9, 1);
+        page.drawText(safe, {
+          x, y, size: fs, font,
+          color: PDFLib.rgb(1, 1, 1),
+          opacity: 0.005,
+        });
+      } catch(e) { /* skip unencodeable chars */ }
+    }
+  }
+
+  // 2. Image layer on top (visually covers text, but text stays selectable in PDF)
+  try {
+    const jpgBytes = await canvasToJpeg(canvas, 0.84);
+    const img = await outPdf.embedJpg(jpgBytes);
+    page.drawImage(img, { x: 0, y: 0, width: pdfW, height: pdfH });
+  } catch(e) {
+    // Fallback: try PNG
+    try {
+      const pngBytes = await new Promise(resolve => {
+        canvas.toBlob(blob => {
+          const fr = new FileReader();
+          fr.onload = e => resolve(new Uint8Array(e.target.result));
+          fr.readAsArrayBuffer(blob);
+        }, 'image/png');
+      });
+      const img = await outPdf.embedPng(pngBytes);
+      page.drawImage(img, { x: 0, y: 0, width: pdfW, height: pdfH });
+    } catch(e2) { log(`Warning: could not embed image for a page`, 'warn'); }
+  }
 }
 
-async function sendMessage() {
-  if (isLoading) return;
-  const input = document.getElementById('msgInput');
-  const text = input.value.trim();
-  if (!text) return;
+// ── Process PDF ──
+async function runPdf() {
+  log(`Loading "${curFile.name}" (${fmtBytes(curFile.size)})...`);
+  ptext.textContent = 'Loading PDF...';
 
-  input.value = '';
-  isLoading = true;
-  document.getElementById('sendBtn').disabled = true;
+  let arrayBuffer;
+  try {
+    arrayBuffer = await curFile.arrayBuffer();
+  } catch(e) {
+    throw new Error('Failed to read file: ' + e.message);
+  }
 
-  addMessage('user', text);
-  conversationHistory.push({ role: 'user', content: text });
+  if (cancelled) return;
 
-  showTyping();
+  const pdfDoc = await pdfjsLib.getDocument({
+    data: arrayBuffer,
+    disableStream: false,
+    disableAutoFetch: false,
+  }).promise;
+
+  const total = pdfDoc.numPages;
+  log(`PDF loaded: ${total} pages`, 'ok');
+
+  const scale   = parseFloat(qualSel.value);
+  const from    = Math.max(1, parseInt(pgFrom.value) || 1);
+  const to      = Math.min(total, parseInt(pgTo.value) || total);
+  const pgCount = to - from + 1;
+
+  log(`Processing pages ${from}–${to} at ${scale}× scale`, '');
+
+  const outPdf = await PDFLib.PDFDocument.create();
+  let totalWords = 0, done = 0;
+
+  for (let n = from; n <= to; n++) {
+    if (cancelled) break;
+
+    ptext.textContent = `OCR: page ${n} / ${to}`;
+    setProgress(done, pgCount);
+
+    try {
+      const page = await pdfDoc.getPage(n);
+      const vp   = page.getViewport({ scale });
+      const W    = Math.floor(vp.width);
+      const H    = Math.floor(vp.height);
+
+      const canvas = document.createElement('canvas');
+      canvas.width = W; canvas.height = H;
+      const ctx = canvas.getContext('2d', { willReadFrequently: true });
+      await page.render({ canvasContext: ctx, viewport: vp }).promise;
+
+      if (cancelled) { canvas.width = 0; canvas.height = 0; page.cleanup(); break; }
+
+      // OCR
+      const { data } = await ocrWorker.recognize(canvas);
+      const wc = (data.words || []).length;
+      totalWords += wc;
+      fullText += `\n\n──── Page ${n} ────\n${data.text || ''}`;
+
+      // PDF page size in original PDF points (undo scale)
+      const pdfW = vp.width / scale;
+      const pdfH = vp.height / scale;
+
+      await addOcrPage(outPdf, canvas, data, pdfW, pdfH);
+
+      // Release memory ASAP
+      canvas.width = 0; canvas.height = 0;
+      page.cleanup();
+
+      done++;
+      if (done % 5 === 0 || n === to) {
+        log(`Pages ${Math.max(from, n - 4)}–${n} done · ${totalWords} words total`, 'ok');
+      }
+
+      // Let GC breathe
+      await sleep(15);
+
+    } catch(err) {
+      log(`Page ${n} failed: ${err.message}`, 'err');
+    }
+  }
+
+  if (!cancelled && done > 0) await finalize(outPdf, done, totalWords);
+  pdfDoc.destroy();
+}
+
+// ── Process single image ──
+async function runImage() {
+  log(`Loading image "${curFile.name}"...`);
+  ptext.textContent = 'Loading image...';
+
+  const url = URL.createObjectURL(curFile);
+  const img  = new Image();
+  await new Promise((res, rej) => { img.onload = res; img.onerror = rej; img.src = url; });
+  URL.revokeObjectURL(url);
+
+  const scale  = parseFloat(qualSel.value);
+  const canvas = document.createElement('canvas');
+  canvas.width  = Math.round(img.naturalWidth  * scale);
+  canvas.height = Math.round(img.naturalHeight * scale);
+  canvas.getContext('2d', { willReadFrequently: true })
+        .drawImage(img, 0, 0, canvas.width, canvas.height);
+
+  log(`Image: ${canvas.width}×${canvas.height}px at ${scale}× scale`, 'ok');
+
+  ptext.textContent = 'Running OCR...';
+  setProgress(0, 1);
+
+  const { data } = await ocrWorker.recognize(canvas);
+  const wc = (data.words || []).length;
+  fullText = data.text || '';
+  log(`OCR done: ${wc} words`, 'ok');
+
+  if (cancelled) return;
+
+  // 96 dpi image → 72 pt PDF (×0.75)
+  const pdfW = img.naturalWidth  * 0.75;
+  const pdfH = img.naturalHeight * 0.75;
+
+  const outPdf = await PDFLib.PDFDocument.create();
+  await addOcrPage(outPdf, canvas, data, pdfW, pdfH);
+
+  canvas.width = 0; canvas.height = 0;
+  setProgress(1, 1);
+
+  await finalize(outPdf, 1, wc);
+}
+
+// ── Finalize & show result ──
+async function finalize(outPdf, pages, words) {
+  ptext.textContent = 'Encoding PDF...';
+  log('Saving searchable PDF...', '');
+
+  const bytes = await outPdf.save();
+  dlBlob = new Blob([bytes], { type: 'application/pdf' });
+
+  const elapsed = Date.now() - t0;
+  const url = URL.createObjectURL(dlBlob);
+  const baseName = curFile.name.replace(/\.[^.]+$/, '');
+  btnDl.href = url;
+  btnDl.download = `ocr_${baseName}.pdf`;
+
+  $('sPg').textContent = pages;
+  $('sWd').textContent = fmtNum(words);
+  $('sCh').textContent = fmtNum(fullText.length);
+  $('sTm').textContent = fmtTime(elapsed);
+
+  resMeta.textContent = `${pages} page${pages!==1?'s':''} · ${words} words · output: ${fmtBytes(dlBlob.size)}`;
+  prevText.textContent = fullText.slice(0, 4000) + (fullText.length > 4000 ? '\n\n[Preview truncated — download .txt for full text]' : '');
+
+  resPanel.classList.add('show');
+  resPanel.scrollIntoView({ behavior: 'smooth' });
+  ptext.textContent = '✓ Complete';
+  setProgress(100, 100);
+  log(`✓ Done in ${fmtTime(elapsed)} · output size: ${fmtBytes(dlBlob.size)}`, 'ok');
+}
+
+// ── Main entry ──
+btnProcess.addEventListener('click', async () => {
+  if (!curFile) return;
+  cancelled = false; fullText = ''; dlBlob = null; t0 = Date.now();
+
+  btnProcess.disabled = true;
+  progPanel.classList.add('show');
+  resPanel.classList.remove('show');
+  plog.innerHTML = '';
+  pbar.style.width = '0%';
+  ppct.textContent = '0%';
+  btnCancel.disabled = false;
+  btnCancel.textContent = '✕ Cancel';
 
   try {
-    const response = await fetch(API_URL, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        model: 'claude-sonnet-4-20250514',
-        max_tokens: 1000,
-        system: 'You are Claude on a Galaxy Watch 4. Keep responses SHORT — 1-3 sentences max. Be conversational, warm, direct. No markdown or bullet points.',
-        messages: conversationHistory
-      })
-    });
+    await initOCR(langSel.value);
+    if (cancelled) throw new Error('Cancelled');
 
-    removeTyping();
+    const isPdf = curFile.type === 'application/pdf' || /\.pdf$/i.test(curFile.name);
+    if (isPdf) await runPdf();
+    else       await runImage();
 
-    if (!response.ok) {
-      const err = await response.json();
-      throw new Error(err.error?.message || 'API error');
+  } catch(err) {
+    if (err.message !== 'Cancelled') {
+      log('Error: ' + err.message, 'err');
+      console.error(err);
+    } else {
+      log('Cancelled by user.', 'warn');
+      ptext.textContent = 'Cancelled';
     }
-
-    const data = await response.json();
-    const reply = data.content.map(b => b.text || '').join('');
-
-    conversationHistory.push({ role: 'assistant', content: reply });
-    addMessage('ai', reply);
-
-  } catch (err) {
-    removeTyping();
-    addMessage('error', '⚠ ' + (err.message.length > 60 ? err.message.slice(0,60)+'…' : err.message));
+  } finally {
+    btnProcess.disabled = false;
+    if (ocrWorker) { await ocrWorker.terminate().catch(()=>{}); ocrWorker = null; }
   }
+});
 
-  isLoading = false;
-  document.getElementById('sendBtn').disabled = false;
-  input.focus();
-}
+btnCancel.addEventListener('click', () => {
+  cancelled = true;
+  btnCancel.disabled = true;
+  btnCancel.textContent = 'Cancelling...';
+  log('Cancellation requested…', 'warn');
+});
+
+// ── Text actions ──
+$('btnCopy').addEventListener('click', async () => {
+  await navigator.clipboard.writeText(fullText).catch(()=>{});
+  $('btnCopy').textContent = '✓ Copied!';
+  setTimeout(()=>{ $('btnCopy').textContent = '📋 Copy All Text'; }, 2200);
+});
+
+$('btnTxt').addEventListener('click', () => {
+  const blob = new Blob([fullText], { type: 'text/plain' });
+  const a = Object.assign(document.createElement('a'), {
+    href: URL.createObjectURL(blob),
+    download: `ocr_${curFile.name.replace(/\.[^.]+$/, '')}.txt`
+  });
+  a.click();
+});
+
+$('btnReset').addEventListener('click', () => {
+  curFile = null; fullText = ''; dlBlob = null;
+  fileCard.classList.remove('show');
+  progPanel.classList.remove('show');
+  resPanel.classList.remove('show');
+  btnProcess.disabled = true;
+  fileInput.value = '';
+  plog.innerHTML = '';
+  pbar.style.width = '0%';
+  ppct.textContent = '0%';
+  pgFrom.value = ''; pgTo.value = '';
+});
 </script>
 
 </body>
